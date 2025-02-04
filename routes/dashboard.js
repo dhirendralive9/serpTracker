@@ -5,6 +5,12 @@ const Keyword = require("../models/Keyword");
 const axios = require("axios");
 const RecentCheck = require("../models/RecentCheck");
 
+const searchEngineEndpoints = {
+    google: "https://api.dataforseo.com/v3/serp/google/organic/live/advanced",
+    bing: "https://api.dataforseo.com/v3/serp/bing/organic/live/advanced"
+};
+
+
 
 const { XMLHttpRequest } = require("xmlhttprequest");
 // Dashboard Route
@@ -42,29 +48,16 @@ router.get("/check", authMiddleware, async (req, res) => {
 // Encode credentials in Base64
 const authHeader = "Basic " + Buffer.from(`${process.env.DATAFORSEO_USERNAME}:${process.env.DATAFORSEO_PASSWORD}`).toString("base64");
 
-// Handle keyword tracking request
+
+const KeywordHistory = require("../models/KeywordHistory");
+
 router.post("/track", authMiddleware, async (req, res) => {
     const { keyword, domain, country, device_os, frequency, searchEngine } = req.body;
     const [device, os] = device_os.split("/");
-
-    // Get DataForSEO location code
     const location_code = locationCodes[country];
-
-    // Define API endpoint based on selected search engine
-    let apiEndpoint;
-    switch (searchEngine) {
-        case "google":
-            apiEndpoint = "https://api.dataforseo.com/v3/serp/google/organic/live/advanced";
-            break;
-        case "bing":
-            apiEndpoint = "https://api.dataforseo.com/v3/serp/bing/organic/live/advanced";
-            break;
-        default:
-            return res.status(400).send("Invalid search engine selected.");
-    }
+    const apiEndpoint = searchEngineEndpoints[searchEngine || "google"];
 
     try {
-        // Prepare the request payload
         const requestData = JSON.stringify([
             {
                 keyword,
@@ -76,31 +69,24 @@ router.post("/track", authMiddleware, async (req, res) => {
             }
         ]);
 
-        // Initialize XMLHttpRequest
         const xhr = new XMLHttpRequest();
         xhr.open("POST", apiEndpoint, true);
         xhr.setRequestHeader("Authorization", authHeader);
         xhr.setRequestHeader("Content-Type", "application/json");
 
-        xhr.onreadystatechange = function () {
+        xhr.onreadystatechange = async function () {
             if (xhr.readyState === 4) {
                 try {
                     const response = JSON.parse(xhr.responseText);
-
                     let rank = null;
 
-                    // Handle API errors
-                    if (!response.tasks || response.tasks.length === 0 || !response.tasks[0].result || !response.tasks[0].result[0].items) {
-                        console.warn("⚠️ No ranking data available.");
-                        return res.redirect("/dashboard");
+                    if (response.tasks && response.tasks[0].result && response.tasks[0].result[0].items) {
+                        const results = response.tasks[0].result[0].items;
+                        const position = results.findIndex(item => item.url && item.url.includes(domain)) + 1;
+                        rank = position > 0 ? position : null;
                     }
 
-                    // Extract ranking data
-                    const results = response.tasks[0].result[0].items;
-                    const position = results.findIndex(item => item.url && item.url.includes(domain)) + 1;
-                    rank = position > 0 ? position : null;
-
-                    // Store keyword tracking in the database
+                    // Save keyword to database
                     const newKeyword = new Keyword({
                         user: req.user.id,
                         searchEngine,
@@ -113,12 +99,23 @@ router.post("/track", authMiddleware, async (req, res) => {
                         rank
                     });
 
-                    newKeyword.save().then(() => {
-                        res.redirect("/dashboard");
-                    }).catch(error => {
-                        console.error("❌ Error saving to database:", error);
-                        res.status(500).send("Server Error");
+                    const savedKeyword = await newKeyword.save();
+
+                    // Save ranking history
+                    const historyEntry = new KeywordHistory({
+                        keywordId: savedKeyword._id,
+                        position: rank
                     });
+
+                    const savedHistory = await historyEntry.save();
+
+                    // Attach history ID to keyword
+                    await Keyword.updateOne(
+                        { _id: savedKeyword._id },
+                        { $push: { history: savedHistory._id } }
+                    );
+
+                    res.redirect("/dashboard");
 
                 } catch (error) {
                     console.error("❌ Error processing SERP response:", error);
@@ -127,7 +124,6 @@ router.post("/track", authMiddleware, async (req, res) => {
             }
         };
 
-        // Send the request
         xhr.send(requestData);
 
     } catch (error) {
@@ -135,6 +131,8 @@ router.post("/track", authMiddleware, async (req, res) => {
         res.status(500).send("Server Error");
     }
 });
+
+
 
 router.post("/check", authMiddleware, async (req, res) => {
     const { keyword, domain, country, device_os, searchEngine } = req.body;
@@ -242,6 +240,28 @@ router.post("/check/delete/:id", authMiddleware, async (req, res) => {
         res.redirect("/dashboard/check");
     } catch (error) {
         console.error("❌ Error deleting recent check:", error);
+        res.status(500).send("Server Error");
+    }
+});
+
+// Delete keyword and its history
+router.post("/delete/:id", async (req, res) => {
+    try {
+        const keywordId = req.params.id;
+
+        // Delete keyword from Keyword collection
+        const deletedKeyword = await Keyword.findByIdAndDelete(keywordId);
+        if (!deletedKeyword) {
+            return res.status(404).send("Keyword not found");
+        }
+
+        // Delete all history entries related to the keyword
+        await KeywordHistory.deleteMany({ keywordId });
+
+        console.log(`✅ Deleted keyword and its history: ${deletedKeyword.keyword}`);
+        res.redirect("/dashboard");
+    } catch (error) {
+        console.error("❌ Error deleting keyword:", error);
         res.status(500).send("Server Error");
     }
 });

@@ -1,35 +1,14 @@
-const cron = require("node-cron");
-const { XMLHttpRequest } = require("xmlhttprequest");
-const Keyword = require("../models/Keyword"); // Ensure correct path to Keyword model
-require("dotenv").config();
+const Keyword = require("../models/Keyword");
+const KeywordHistory = require("../models/KeywordHistory");
 
-const locationCodes = {
-    USA: 2840,
-    UK: 2826,
-    Australia: 2782,
-    Canada: 2841,
-    India: 2793
-};
-
-// API Auth
-const authHeader = "Basic " + Buffer.from(`${process.env.DATAFORSEO_USERNAME}:${process.env.DATAFORSEO_PASSWORD}`).toString("base64");
-
-// Search Engine Endpoints
-const searchEngineEndpoints = {
-    google: "https://api.dataforseo.com/v3/serp/google/organic/live/advanced",
-    bing: "https://api.dataforseo.com/v3/serp/bing/organic/live/advanced"
-};
-
-// Function to update keyword rankings
 async function updateKeywordRankings() {
     console.log("🔄 Running scheduled keyword ranking updates...");
 
     const today = new Date();
     
     try {
-        // Find keywords that need an update based on frequency
         const keywordsToUpdate = await Keyword.find({
-            lastChecked: { $lte: new Date(today.setDate(today.getDate() - 1)) } // Check only those due for update
+            lastChecked: { $lte: new Date(today.setDate(today.getDate() - 1)) }
         });
 
         if (keywordsToUpdate.length === 0) {
@@ -38,12 +17,11 @@ async function updateKeywordRankings() {
         }
 
         for (const keywordObj of keywordsToUpdate) {
-            const { keyword, domain, country, device, os, searchEngine, frequency } = keywordObj;
+            const { keyword, domain, country, device, os, searchEngine } = keywordObj;
 
             const location_code = locationCodes[country];
-            const apiEndpoint = searchEngineEndpoints[searchEngine || "google"]; // Default to Google
+            const apiEndpoint = searchEngineEndpoints[searchEngine || "google"];
 
-            // Prepare API request
             const requestData = JSON.stringify([
                 {
                     keyword,
@@ -55,7 +33,6 @@ async function updateKeywordRankings() {
                 }
             ]);
 
-            // Make API request using XMLHttpRequest
             const xhr = new XMLHttpRequest();
             xhr.open("POST", apiEndpoint, true);
             xhr.setRequestHeader("Authorization", authHeader);
@@ -67,20 +44,27 @@ async function updateKeywordRankings() {
                         const response = JSON.parse(xhr.responseText);
                         let rank = null;
 
-                        // Handle API errors
-                        if (!response.tasks || response.tasks.length === 0 || !response.tasks[0].result || !response.tasks[0].result[0].items) {
-                            console.warn(`⚠️ No ranking data found for ${keyword}`);
-                        } else {
-                            // Extract ranking data
+                        if (response.tasks && response.tasks[0].result && response.tasks[0].result[0].items) {
                             const results = response.tasks[0].result[0].items;
                             const position = results.findIndex(item => item.url && item.url.includes(domain)) + 1;
                             rank = position > 0 ? position : null;
                         }
 
-                        // Update keyword ranking and last checked date
+                        // Store ranking history
+                        const historyEntry = new KeywordHistory({
+                            keywordId: keywordObj._id,
+                            position: rank
+                        });
+
+                        await historyEntry.save();
+
+                        // Update keyword rank & add history reference
                         await Keyword.updateOne(
                             { _id: keywordObj._id },
-                            { $set: { rank, lastChecked: new Date() } }
+                            { 
+                                $set: { rank, lastChecked: new Date() },
+                                $push: { history: historyEntry._id } 
+                            }
                         );
 
                         console.log(`✅ Updated rank for ${keyword} (${searchEngine.toUpperCase()}): ${rank !== null ? rank : "Not in Top 100"}`);
@@ -90,22 +74,9 @@ async function updateKeywordRankings() {
                 }
             };
 
-            // Send the request
             xhr.send(requestData);
         }
     } catch (error) {
         console.error("❌ Error updating keyword rankings:", error);
     }
 }
-
-// Schedule cron job to run daily at 3 AM
-cron.schedule("0 3 * * *", () => {
-    updateKeywordRankings();
-}, {
-    scheduled: true,
-    timezone: "UTC"
-});
-
-console.log("⏳ Cron job for keyword ranking updates scheduled at 3 AM UTC");
-
-module.exports = { updateKeywordRankings };
