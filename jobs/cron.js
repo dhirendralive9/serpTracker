@@ -1,12 +1,39 @@
+const cron = require("node-cron");
+const { XMLHttpRequest } = require("xmlhttprequest");
+const mongoose = require("mongoose");
 const Keyword = require("../models/Keyword");
 const KeywordHistory = require("../models/KeywordHistory");
+require("dotenv").config();
 
+// MongoDB Connection
+mongoose.connect(process.env.MONGO_URI)
+    .then(() => console.log("✅ MongoDB connected successfully!"))
+    .catch((err) => console.error("❌ MongoDB connection error:", err));
+
+
+const locationCodes = {
+    USA: 2840,
+    UK: 2826,
+    Australia: 2782,
+    Canada: 2841,
+    India: 2793
+};
+
+const authHeader = "Basic " + Buffer.from(`${process.env.DATAFORSEO_USERNAME}:${process.env.DATAFORSEO_PASSWORD}`).toString("base64");
+
+const searchEngineEndpoints = {
+    google: "https://api.dataforseo.com/v3/serp/google/organic/live/advanced",
+    bing: "https://api.dataforseo.com/v3/serp/bing/organic/live/advanced"
+};
+
+// Function to update keyword rankings
 async function updateKeywordRankings() {
     console.log("🔄 Running scheduled keyword ranking updates...");
 
     const today = new Date();
-    
+
     try {
+        // Find keywords that need updating (based on frequency)
         const keywordsToUpdate = await Keyword.find({
             lastChecked: { $lte: new Date(today.setDate(today.getDate() - 1)) }
         });
@@ -18,7 +45,6 @@ async function updateKeywordRankings() {
 
         for (const keywordObj of keywordsToUpdate) {
             const { keyword, domain, country, device, os, searchEngine } = keywordObj;
-
             const location_code = locationCodes[country];
             const apiEndpoint = searchEngineEndpoints[searchEngine || "google"];
 
@@ -80,3 +106,16 @@ async function updateKeywordRankings() {
         console.error("❌ Error updating keyword rankings:", error);
     }
 }
+
+// Schedule cron job to run daily at 3 AM UTC
+cron.schedule("0 3 * * *", () => {
+    updateKeywordRankings();
+}, {
+    scheduled: true,
+    timezone: "UTC"
+});
+
+// Run the update immediately when script runs (for testing)
+updateKeywordRankings();
+
+console.log("⏳ Cron job for keyword ranking updates scheduled at 3 AM UTC");
