@@ -38,16 +38,6 @@ app.get("/", (req, res) => {
 
 app.use("/", authRoutes);
 
-// Serve Register Page
-app.get("/register", (req, res) => {
-    res.render("register");
-});
-
-// Serve Login Page
-app.get("/login", (req, res) => {
-    res.render("login");
-});
-
 
 app.use("/dashboard", dashboardRoutes);
 

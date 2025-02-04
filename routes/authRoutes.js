@@ -50,6 +50,16 @@ router.get("/logout", (req, res) => {
     res.clearCookie("token").redirect("/");
 });
 
+router.get("/register", (req, res) => {
+    res.render("register", { user: req.user || null, currentPage: "register" });
+});
+
+
+router.get("/login", (req, res) => {
+    res.render("login", { user: req.user || null, currentPage: "login" });
+});
+
+
 
 
 module.exports = router;
