@@ -61,6 +61,14 @@
                     <option value="5">Every 5 Days</option>
                 </select>
             </div>
+            <div class="mb-3">
+                <label for="searchEngine" class="form-label">Select Search Engine</label>
+                <select id="searchEngine" name="searchEngine" class="form-control" required>
+                    <option value="google">Google</option>
+                    <option value="bing">Bing</option>
+                </select>
+            </div>
+            
             
             <button type="submit" class="btn btn-primary">Track Keyword</button>
         </form>
@@ -69,6 +77,7 @@
         <table class="table table-bordered">
             <thead>
                 <tr>
+                    <th>Search Engine</th>
                     <th>Keyword</th>
                     <th>Domain</th>
                     <th>Country</th>
@@ -82,14 +91,15 @@
             <tbody>
                 <% trackedKeywords.forEach(keyword => { %>
                     <tr>
+                        <td><%= keyword.searchEngine ? keyword.searchEngine.toUpperCase() : "GOOGLE" %></td>
                         <td><%= keyword.keyword %></td>
                         <td><%= keyword.domain %></td>
                         <td><%= keyword.country %></td>
                         <td><%= keyword.device %></td>
                         <td><%= keyword.os %></td>
                         <td><%= keyword.frequency %></td>
-                        <td><%= keyword.rank %></td>
-                        <td><%= keyword.date %></td>
+                        <td><%= keyword.rank !== null ? keyword.rank : "Not in Top 100" %></td>
+                        <td><%= new Date(keyword.date).toLocaleString() %></td>
                     </tr>
                 <% }); %>
             </tbody>

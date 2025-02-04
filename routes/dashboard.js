@@ -44,11 +44,24 @@ const authHeader = "Basic " + Buffer.from(`${process.env.DATAFORSEO_USERNAME}:${
 
 // Handle keyword tracking request
 router.post("/track", authMiddleware, async (req, res) => {
-    const { keyword, domain, country, device_os, frequency } = req.body;
+    const { keyword, domain, country, device_os, frequency, searchEngine } = req.body;
     const [device, os] = device_os.split("/");
 
     // Get DataForSEO location code
     const location_code = locationCodes[country];
+
+    // Define API endpoint based on selected search engine
+    let apiEndpoint;
+    switch (searchEngine) {
+        case "google":
+            apiEndpoint = "https://api.dataforseo.com/v3/serp/google/organic/live/advanced";
+            break;
+        case "bing":
+            apiEndpoint = "https://api.dataforseo.com/v3/serp/bing/organic/live/advanced";
+            break;
+        default:
+            return res.status(400).send("Invalid search engine selected.");
+    }
 
     try {
         // Prepare the request payload
@@ -65,53 +78,58 @@ router.post("/track", authMiddleware, async (req, res) => {
 
         // Initialize XMLHttpRequest
         const xhr = new XMLHttpRequest();
-        xhr.open("POST", "https://api.dataforseo.com/v3/serp/google/organic/live/advanced", true);
+        xhr.open("POST", apiEndpoint, true);
         xhr.setRequestHeader("Authorization", authHeader);
         xhr.setRequestHeader("Content-Type", "application/json");
 
-        xhr.onreadystatechange = async function () {
+        xhr.onreadystatechange = function () {
             if (xhr.readyState === 4) {
                 try {
                     const response = JSON.parse(xhr.responseText);
-        
-                    //console.log("✅ DataForSEO API Response:", JSON.stringify(response, null, 2)); // Debugging
-        
+
                     let rank = null;
-        
-                    // Step 3: Handle API errors gracefully before processing
+
+                    // Handle API errors
                     if (!response.tasks || response.tasks.length === 0 || !response.tasks[0].result || !response.tasks[0].result[0].items) {
-                        console.warn("⚠️ No ranking data available. API might have returned an empty result.");
-                        return res.status(400).send("No ranking data found.");
+                        console.warn("⚠️ No ranking data available.");
+                        return res.redirect("/dashboard");
                     }
-        
+
                     // Extract ranking data
                     const results = response.tasks[0].result[0].items;
                     const position = results.findIndex(item => item.url && item.url.includes(domain)) + 1;
                     rank = position > 0 ? position : null;
-        
+
+                    // Store keyword tracking in the database
                     const newKeyword = new Keyword({
-            user: req.user.id,
-            keyword,
-            domain,
-            country,
-            device,
-            os,
-            frequency: parseInt(frequency, 10) // Convert frequency to number
-        });
-        
-                    await newKeyword.save();
-                    res.redirect("/dashboard");
-        
+                        user: req.user.id,
+                        searchEngine,
+                        keyword,
+                        domain,
+                        country,
+                        device,
+                        os,
+                        frequency: parseInt(frequency, 10),
+                        rank
+                    });
+
+                    newKeyword.save().then(() => {
+                        res.redirect("/dashboard");
+                    }).catch(error => {
+                        console.error("❌ Error saving to database:", error);
+                        res.status(500).send("Server Error");
+                    });
+
                 } catch (error) {
                     console.error("❌ Error processing SERP response:", error);
                     res.status(500).send("Server Error");
                 }
             }
         };
-        
 
         // Send the request
         xhr.send(requestData);
+
     } catch (error) {
         console.error("❌ Error sending SERP request:", error);
         res.status(500).send("Server Error");
