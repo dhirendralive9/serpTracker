@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Check Current Ranking</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+</head>
+<body>
+    <nav class="navbar navbar-dark bg-dark">
+        <div class="container">
+            <a class="navbar-brand" href="/dashboard">SERP Tracker Dashboard</a>
+            
+            <a href="/logout" class="btn btn-danger">Logout</a>
+        </div>
+    </nav>
+
+    <div class="container mt-5">
+        <h2>Check Current Ranking</h2>
+        <p>Enter details below to fetch the current ranking.</p>
+
+        <form action="/dashboard/check" method="POST">
+            <div class="mb-3">
+                <label for="keyword" class="form-label">Keyword</label>
+                <input type="text" id="keyword" name="keyword" class="form-control" required>
+            </div>
+            <div class="mb-3">
+                <label for="domain" class="form-label">Domain</label>
+                <input type="text" id="domain" name="domain" class="form-control" required>
+            </div>
+            <div class="mb-3">
+                <label for="country" class="form-label">Select Country</label>
+                <select id="country" name="country" class="form-control" required>
+                    <option value="USA">USA</option>
+                    <option value="UK">UK</option>
+                    <option value="Australia">Australia</option>
+                    <option value="Canada">Canada</option>
+                    <option value="India">India</option>
+                </select>
+            </div>
+            <div class="mb-3">
+                <label for="searchEngine" class="form-label">Select Search Engine</label>
+                <select id="searchEngine" name="searchEngine" class="form-control" required>
+                    <option value="google">Google</option>
+                    <option value="bing">Bing</option>
+                    <option value="yahoo">Yahoo</option>
+                </select>
+            </div>
+            
+            <div class="mb-3">
+                <label for="device" class="form-label">Select Device</label>
+                <select id="device" name="device_os" class="form-control" required>
+                    <option value="desktop/windows">Desktop/Windows</option>
+                    <option value="desktop/macos">Desktop/MacOS</option>
+                    <option value="mobile/android">Mobile/Android</option>
+                    <option value="mobile/ios">Mobile/iOS</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-primary">Check Now</button>
+        </form>
+
+        <% if (rank !== undefined) { %>
+            <h3 class="mt-4">Results</h3>
+            <p><strong>Keyword:</strong> <%= keyword %></p>
+            <p><strong>Domain:</strong> <%= domain %></p>
+            <p><strong>Rank:</strong> <%= rank !== null ? rank : "Not in Top 100" %></p>
+        <% } %>
+    </div>
+
+    <div class="container mt-5">
+        <h2>Recent Checks</h2>
+        <table class="table table-bordered">
+            <thead>
+                <tr>
+                    <th>Search Engine</th>
+                    <th>Keyword</th>
+                    <th>Domain</th>
+                    <th>Country</th>
+                    <th>Device</th>
+                    <th>OS</th>
+                    <th>Rank</th>
+                    <th>Date Checked</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                <% if (recentChecks.length > 0) { %>
+                    <% recentChecks.forEach(check => { %>
+                        <tr>
+                            <td><%= check.searchEngine ? check.searchEngine.toUpperCase() : "Unknown" %></td>
+                            <td><%= check.keyword %></td>
+                            <td><%= check.domain %></td>
+                            <td><%= check.country %></td>
+                            <td><%= check.device %></td>
+                            <td><%= check.os %></td>
+                            <td><%= check.rank !== null ? check.rank : "Not in Top 100" %></td>
+                            <td><%= new Date(check.dateChecked).toLocaleString() %></td>
+                            <td>
+                                <form action="/dashboard/check/delete/<%= check._id %>" method="POST">
+                                    <button type="submit" class="btn btn-danger btn-sm">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                    <% }); %>
+                <% } else { %>
+                    <tr>
+                        <td colspan="9" class="text-center">No recent checks available.</td>
+                    </tr>
+                <% } %>
+            </tbody>
+            
+            
+        </table>
+    </div>
+</body>
+</html>
