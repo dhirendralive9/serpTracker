@@ -101,18 +101,18 @@ router.post("/track", authMiddleware, async (req, res) => {
 
                     const savedKeyword = await newKeyword.save();
 
-                    // Save ranking history
+                    // Create a keyword history document for tracking changes
                     const historyEntry = new KeywordHistory({
                         keywordId: savedKeyword._id,
-                        position: rank
+                        history: [{ position: rank, checkedAt: new Date() }]
                     });
 
                     const savedHistory = await historyEntry.save();
 
-                    // Attach history ID to keyword
+                    // Attach history ID to the keyword
                     await Keyword.updateOne(
                         { _id: savedKeyword._id },
-                        { $push: { history: savedHistory._id } }
+                        { $set: { history: savedHistory._id } }
                     );
 
                     res.redirect("/dashboard");
@@ -131,7 +131,6 @@ router.post("/track", authMiddleware, async (req, res) => {
         res.status(500).send("Server Error");
     }
 });
-
 
 
 router.post("/check", authMiddleware, async (req, res) => {

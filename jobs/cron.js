@@ -10,7 +10,6 @@ mongoose.connect(process.env.MONGO_URI)
     .then(() => console.log("✅ MongoDB connected successfully!"))
     .catch((err) => console.error("❌ MongoDB connection error:", err));
 
-
 const locationCodes = {
     USA: 2840,
     UK: 2826,
@@ -31,9 +30,8 @@ async function updateKeywordRankings() {
     console.log("🔄 Running scheduled keyword ranking updates...");
 
     const today = new Date();
-
+    
     try {
-        // Find keywords that need updating (based on frequency)
         const keywordsToUpdate = await Keyword.find({
             lastChecked: { $lte: new Date(today.setDate(today.getDate() - 1)) }
         });
@@ -44,7 +42,7 @@ async function updateKeywordRankings() {
         }
 
         for (const keywordObj of keywordsToUpdate) {
-            const { keyword, domain, country, device, os, searchEngine } = keywordObj;
+            const { keyword, domain, country, device, os, searchEngine, history } = keywordObj;
             const location_code = locationCodes[country];
             const apiEndpoint = searchEngineEndpoints[searchEngine || "google"];
 
@@ -76,21 +74,16 @@ async function updateKeywordRankings() {
                             rank = position > 0 ? position : null;
                         }
 
-                        // Store ranking history
-                        const historyEntry = new KeywordHistory({
-                            keywordId: keywordObj._id,
-                            position: rank
-                        });
+                        // Append new ranking data to history array
+                        await KeywordHistory.updateOne(
+                            { _id: history },
+                            { $push: { history: { position: rank, checkedAt: new Date() } } }
+                        );
 
-                        await historyEntry.save();
-
-                        // Update keyword rank & add history reference
+                        // Update keyword rank
                         await Keyword.updateOne(
                             { _id: keywordObj._id },
-                            { 
-                                $set: { rank, lastChecked: new Date() },
-                                $push: { history: historyEntry._id } 
-                            }
+                            { $set: { rank, lastChecked: new Date() } }
                         );
 
                         console.log(`✅ Updated rank for ${keyword} (${searchEngine.toUpperCase()}): ${rank !== null ? rank : "Not in Top 100"}`);
@@ -106,14 +99,6 @@ async function updateKeywordRankings() {
         console.error("❌ Error updating keyword rankings:", error);
     }
 }
-
-// Schedule cron job to run daily at 3 AM UTC
-cron.schedule("0 3 * * *", () => {
-    updateKeywordRankings();
-}, {
-    scheduled: true,
-    timezone: "UTC"
-});
 
 // Run the update immediately when script runs (for testing)
 updateKeywordRankings();

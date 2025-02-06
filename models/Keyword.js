@@ -8,10 +8,10 @@ const keywordSchema = new mongoose.Schema({
     country: { type: String, required: true },
     device: { type: String, required: true },
     os: { type: String, required: true },
-    frequency: { type: Number, required: true, default: 1 }, // Days between checks
-    rank: { type: Number, default: null }, // Current rank
-    lastChecked: { type: Date, default: Date.now }, // Last checked date
-    history: [{ type: mongoose.Schema.Types.ObjectId, ref: "KeywordHistory" }] // Store history entries
+    frequency: { type: Number, required: true, default: 1 },
+    rank: { type: Number, default: null }, // Current ranking
+    lastChecked: { type: Date, default: Date.now },
+    history: { type: mongoose.Schema.Types.ObjectId, ref: "KeywordHistory" } // Only one history object per keyword
 });
 
 module.exports = mongoose.model("Keyword", keywordSchema);
