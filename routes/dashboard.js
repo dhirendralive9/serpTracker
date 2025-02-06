@@ -96,23 +96,24 @@ router.post("/track", authMiddleware, async (req, res) => {
                         device,
                         os,
                         frequency: parseInt(frequency, 10),
-                        rank
+                        rank // Store initial rank
                     });
 
                     const savedKeyword = await newKeyword.save();
 
-                    // Create a keyword history document for tracking changes
-                    const historyEntry = new KeywordHistory({
-                        keywordId: savedKeyword._id,
-                        history: [{ position: rank, checkedAt: new Date() }]
-                    });
-
-                    const savedHistory = await historyEntry.save();
+                    // Create or update KeywordHistory entry
+                    const historyEntry = await KeywordHistory.findOneAndUpdate(
+                        { keywordId: savedKeyword._id },
+                        { 
+                            $push: { history: { position: rank, checkedAt: new Date() } } 
+                        },
+                        { upsert: true, new: true }
+                    );
 
                     // Attach history ID to the keyword
                     await Keyword.updateOne(
                         { _id: savedKeyword._id },
-                        { $set: { history: savedHistory._id } }
+                        { $set: { history: historyEntry._id } }
                     );
 
                     res.redirect("/dashboard");
