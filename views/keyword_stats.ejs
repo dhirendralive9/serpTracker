@@ -5,23 +5,146 @@
 
     <h2>Keyword Stats: "<%= keyword.keyword %>"</h2>
 
-    <table class="table table-bordered table-striped">
-        <thead>
-            <tr>
-                <th>Date</th>
-                <th>Rank</th>
-            </tr>
-        </thead>
-        <tbody id="historyTable">
-            <% history.slice(0, limit).forEach(entry => { %>
-                <tr>
-                    <td><%= entry.checkedAt ? new Date(entry.checkedAt).toLocaleString() : "N/A" %></td>
+<!-- Chart Container -->
+<div class="card p-3 mb-4">
+    <h5>Ranking Fluctuation Chart</h5>
+    <div>
+        <canvas id="rankingChart"></canvas>
+    </div>
 
-                    <td><%= entry.position %></td>
-                </tr>
-            <% }) %>
-        </tbody>
-    </table>
+    <!-- Date Filter Options -->
+    <div class="mt-3">
+        <label for="dateRange">View Data for:</label>
+        <select id="dateRange" class="form-select w-auto d-inline">
+            <option value="7" selected>Last 7 Days</option>
+            <option value="14">Last 14 Days</option>
+            <option value="30">Last 30 Days</option>
+            <option value="this_year">This Year</option>
+            <option value="last_year">Last Year</option>
+            <option value="custom">Custom Date Range</option>
+        </select>
+
+        <div id="customDateInputs" class="mt-2" style="display: none;">
+            <label>From: <input type="date" id="startDate" class="form-control w-auto d-inline"></label>
+            <label>To: <input type="date" id="endDate" class="form-control w-auto d-inline"></label>
+            <button class="btn btn-primary btn-sm" onclick="updateChart()">Apply</button>
+        </div>
+    </div>
+</div>
+
+<!-- Table for Keyword Ranking History -->
+<table class="table table-bordered table-striped">
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Rank</th>
+        </tr>
+    </thead>
+    <tbody id="historyTable">
+        <% history.slice(0, limit).forEach(entry => { %>
+            <tr>
+                <td><%= entry.checkedAt ? new Date(entry.checkedAt).toLocaleString() : "N/A" %></td>
+                <td><%= entry.position %></td>
+            </tr>
+        <% }) %>
+    </tbody>
+</table>
+
+<!-- Chart.js Script -->
+ 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+        console.log("✅ Script is running in keyword_stats.ejs");
+
+        let historyData = <%- JSON.stringify(history) %>;
+    console.log("✅ History Data Received by Frontend:", historyData); // Debug log
+
+    function formatDate(dateStr) {
+    let dateObj = new Date(dateStr);
+    return dateObj.getFullYear() + "-" +
+           String(dateObj.getMonth() + 1).padStart(2, '0') + "-" +
+           String(dateObj.getDate()).padStart(2, '0'); // Returns YYYY-MM-DD
+}
+
+    function getFilteredData(range) {
+        let filtered = historyData.filter(entry => entry.checkedAt && entry.position !== null);
+        let today = new Date();
+        
+        if (range === "this_year") {
+            let startOfYear = new Date(today.getFullYear(), 0, 1);
+            return filtered.filter(entry => new Date(entry.checkedAt) >= startOfYear);
+        } else if (range === "last_year") {
+            let startOfLastYear = new Date(today.getFullYear() - 1, 0, 1);
+            let endOfLastYear = new Date(today.getFullYear(), 0, 1);
+            return filtered.filter(entry => new Date(entry.checkedAt) >= startOfLastYear && new Date(entry.checkedAt) < endOfLastYear);
+        } else if (range === "custom") {
+            let startDate = new Date(document.getElementById("startDate").value);
+            let endDate = new Date(document.getElementById("endDate").value);
+            return filtered.filter(entry => new Date(entry.checkedAt) >= startDate && new Date(entry.checkedAt) <= endDate);
+        } else {
+            let days = parseInt(range);
+            let pastDate = new Date();
+            pastDate.setDate(today.getDate() - days);
+            return filtered.filter(entry => new Date(entry.checkedAt) >= pastDate);
+        }
+    }
+
+    function updateChart() {
+    let range = document.getElementById("dateRange").value;
+    let filteredData = getFilteredData(range);
+
+    if (filteredData.length === 0) {
+        console.warn("⚠️ No valid ranking data found.");
+        rankingChart.data.labels = [];
+        rankingChart.data.datasets[0].data = [];
+        rankingChart.update();
+        return;
+    }
+
+    let labels = filteredData.map(entry => formatDate(entry.checkedAt));
+    let dataPoints = filteredData.map(entry => entry.position);
+
+    rankingChart.data.labels = labels;
+    rankingChart.data.datasets[0].data = dataPoints;
+    rankingChart.update();
+}
+
+    document.getElementById("dateRange").addEventListener("change", function() {
+        let customInputs = document.getElementById("customDateInputs");
+        if (this.value === "custom") {
+            customInputs.style.display = "block";
+        } else {
+            customInputs.style.display = "none";
+            updateChart();
+        }
+    });
+
+    let ctx = document.getElementById("rankingChart").getContext("2d");
+    let rankingChart = new Chart(ctx, {
+        type: "line",
+        data: {
+            labels: [],
+            datasets: [{
+                label: "Ranking Position",
+                data: [],
+                borderColor: "blue",
+                backgroundColor: "rgba(0, 0, 255, 0.2)",
+                borderWidth: 2,
+                fill: true
+            }]
+        },
+        options: {
+            scales: {
+                y: {
+                    reverse: true, // Lower rank numbers (better) are at the top
+                    ticks: { stepSize: 1 }
+                }
+            }
+        }
+    });
+
+    updateChart(); // Load initial data for default 7 days
+</script>
 
     <div class="d-flex justify-content-between">
         <% if (page > 1) { %>

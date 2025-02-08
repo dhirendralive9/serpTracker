@@ -494,14 +494,18 @@ router.get("/:keywordId", authMiddleware, async (req, res) => {
         const history = historyEntry ? historyEntry.history : [];
 
         // Convert checkedAt field for rendering in EJS
-        const formattedHistory = history.map(entry => ({
-            checkedAt: entry.checkedAt ? new Date(entry.checkedAt).toISOString() : null, 
-            position: entry.position
-        }));
+        const formattedHistory = history
+            .filter(entry => entry.checkedAt && entry.position !== null) // Remove invalid data
+            .map(entry => ({
+                checkedAt: entry.checkedAt, // Ensure valid date format
+                position: entry.position
+            }));
+
+        console.log("✅ Data being sent to keyword_stats.ejs:", JSON.stringify(formattedHistory, null, 2)); // Debug log
 
         res.render("keyword_stats", {
             keyword,
-            history: formattedHistory,
+            history: formattedHistory, // Send formatted history to EJS
             page: 1,
             limit: 10,
             totalPages: Math.ceil(history.length / 10)
@@ -511,6 +515,7 @@ router.get("/:keywordId", authMiddleware, async (req, res) => {
         res.status(500).send("Server Error");
     }
 });
+
 
 
 module.exports = router;
