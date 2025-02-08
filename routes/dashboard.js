@@ -485,7 +485,32 @@ router.post("/top100/history/fetch/:id", authMiddleware, async (req, res) => {
     }
 });
 
+router.get("/:keywordId", authMiddleware, async (req, res) => {
+    try {
+        const keyword = await Keyword.findById(req.params.keywordId);
+        if (!keyword) return res.status(404).send("Keyword not found.");
 
+        const historyEntry = await KeywordHistory.findOne({ keywordId: req.params.keywordId });
+        const history = historyEntry ? historyEntry.history : [];
+
+        // Convert checkedAt field for rendering in EJS
+        const formattedHistory = history.map(entry => ({
+            checkedAt: entry.checkedAt ? new Date(entry.checkedAt).toISOString() : null, 
+            position: entry.position
+        }));
+
+        res.render("keyword_stats", {
+            keyword,
+            history: formattedHistory,
+            page: 1,
+            limit: 10,
+            totalPages: Math.ceil(history.length / 10)
+        });
+    } catch (error) {
+        console.error("❌ Error fetching keyword stats:", error);
+        res.status(500).send("Server Error");
+    }
+});
 
 
 module.exports = router;

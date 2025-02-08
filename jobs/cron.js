@@ -1,106 +1,107 @@
-const cron = require("node-cron");
-const { XMLHttpRequest } = require("xmlhttprequest");
 const mongoose = require("mongoose");
+const schedule = require("node-schedule");
+const XMLHttpRequest = require("xmlhttprequest").XMLHttpRequest;
 const Keyword = require("../models/Keyword");
 const KeywordHistory = require("../models/KeywordHistory");
+
 require("dotenv").config();
-
-// MongoDB Connection
-mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log("✅ MongoDB connected successfully!"))
-    .catch((err) => console.error("❌ MongoDB connection error:", err));
-
-const locationCodes = {
-    USA: 2840,
-    UK: 2826,
-    Australia: 2782,
-    Canada: 2841,
-    India: 2793
-};
 
 const authHeader = "Basic " + Buffer.from(`${process.env.DATAFORSEO_USERNAME}:${process.env.DATAFORSEO_PASSWORD}`).toString("base64");
 
 const searchEngineEndpoints = {
     google: "https://api.dataforseo.com/v3/serp/google/organic/live/advanced",
-    bing: "https://api.dataforseo.com/v3/serp/bing/organic/live/advanced"
+    bing: "https://api.dataforseo.com/v3/serp/bing/organic/live/advanced",
+    yahoo: "https://api.dataforseo.com/v3/serp/yahoo/organic/live/advanced",
+    youtube: "https://api.dataforseo.com/v3/serp/youtube/organic/live/advanced"
 };
+
+const locationCodes = {
+    "USA": 2840,
+    "UK": 2826,
+    "Australia": 2805,
+    "Canada": 2842,
+    "India": 2847
+};
+
+// Connect to MongoDB
+mongoose.connect(process.env.MONGO_URI);
+
+console.log("⏳ Cron job for keyword ranking updates scheduled at 3 AM UTC");
 
 // Function to update keyword rankings
 async function updateKeywordRankings() {
-    console.log("🔄 Running scheduled keyword ranking updates...");
+    console.log("🚀 Running Cron Job: Fetching Keyword Rankings");
 
-    const today = new Date();
-    
-    try {
-        const keywordsToUpdate = await Keyword.find({
-            lastChecked: { $lte: new Date(today.setDate(today.getDate() - 1)) }
-        });
+    const keywords = await Keyword.find({});
+    for (const keywordObj of keywords) {
+        const { keyword, domain, country, device, os, searchEngine } = keywordObj;
+        const location_code = locationCodes[country];
+        let apiEndpoint = searchEngineEndpoints[searchEngine || "google"];
 
-        if (keywordsToUpdate.length === 0) {
-            console.log("✅ No keywords due for an update.");
-            return;
-        }
+        const requestData = JSON.stringify([
+            searchEngine === "youtube"
+                ? { keyword, location_code, language_code: "en", os, block_depth: 20 }
+                : { keyword, location_code, language_code: "en", device, os, depth: 100 }
+        ]);
 
-        for (const keywordObj of keywordsToUpdate) {
-            const { keyword, domain, country, device, os, searchEngine, history } = keywordObj;
-            const location_code = locationCodes[country];
-            const apiEndpoint = searchEngineEndpoints[searchEngine || "google"];
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", apiEndpoint, true);
+        xhr.setRequestHeader("Authorization", authHeader);
+        xhr.setRequestHeader("Content-Type", "application/json");
 
-            const requestData = JSON.stringify([
-                {
-                    keyword,
-                    location_code,
-                    language_code: "en",
-                    device,
-                    os,
-                    depth: 100
-                }
-            ]);
-
-            const xhr = new XMLHttpRequest();
-            xhr.open("POST", apiEndpoint, true);
-            xhr.setRequestHeader("Authorization", authHeader);
-            xhr.setRequestHeader("Content-Type", "application/json");
-
-            xhr.onreadystatechange = async function () {
-                if (xhr.readyState === 4) {
-                    try {
-                        const response = JSON.parse(xhr.responseText);
-                        let rank = null;
-
-                        if (response.tasks && response.tasks[0].result && response.tasks[0].result[0].items) {
-                            const results = response.tasks[0].result[0].items;
-                            const position = results.findIndex(item => item.url && item.url.includes(domain)) + 1;
-                            rank = position > 0 ? position : null;
-                        }
-
-                        // Append new ranking data to history array
-                        await KeywordHistory.updateOne(
-                            { _id: history },
-                            { $push: { history: { position: rank, checkedAt: new Date() } } }
-                        );
-
-                        // Update keyword rank
-                        await Keyword.updateOne(
-                            { _id: keywordObj._id },
-                            { $set: { rank, lastChecked: new Date() } }
-                        );
-
-                        console.log(`✅ Updated rank for ${keyword} (${searchEngine.toUpperCase()}): ${rank !== null ? rank : "Not in Top 100"}`);
-                    } catch (error) {
-                        console.error(`❌ Error processing SERP response for ${keyword}:`, error);
+        xhr.onreadystatechange = async function () {
+            if (xhr.readyState === 4) {
+                try {
+                    const response = JSON.parse(xhr.responseText);
+                    if (!response.tasks || response.tasks.length === 0 || !response.tasks[0].result || !response.tasks[0].result[0].items) {
+                        console.warn(`⚠️ No ranking data available for ${keyword}`);
+                        return;
                     }
-                }
-            };
 
-            xhr.send(requestData);
-        }
-    } catch (error) {
-        console.error("❌ Error updating keyword rankings:", error);
+                    const results = response.tasks[0].result[0].items;
+                    const position = results.findIndex(item => item.url && item.url.includes(domain)) + 1;
+                    const rank = position > 0 ? position : null;
+
+                    console.log(`✅ ${keyword} (${searchEngine}) Rank: ${rank}`);
+
+                    // Update Keyword Collection (latest ranking)
+                    await Keyword.updateOne(
+                        { _id: keywordObj._id },
+                        { rank, lastChecked: new Date() } // Store the latest rank with timestamp
+                    );
+
+                    // Update Keyword History Collection
+                    const historyEntry = await KeywordHistory.findOne({ keywordId: keywordObj._id });
+
+                    if (historyEntry) {
+                        // If history exists, update the history array
+                        await KeywordHistory.updateOne(
+                            { _id: historyEntry._id },
+                            { $push: { history: { date: new Date(), position: rank } } }
+                        );
+                    } else {
+                        // If history does not exist, create a new entry
+                        const newHistory = new KeywordHistory({
+                            keywordId: keywordObj._id,
+                            history: [{ date: new Date(), position: rank }]
+                        });
+                        await newHistory.save();
+                    }
+
+                } catch (error) {
+                    console.error("❌ Error processing SERP response:", error);
+                }
+            }
+        };
+
+        xhr.send(requestData);
     }
 }
 
-// Run the update immediately when script runs (for testing)
-updateKeywordRankings();
+// Schedule the job to run daily at 3 AM UTC
+schedule.scheduleJob("0 3 * * *", updateKeywordRankings);
 
-console.log("⏳ Cron job for keyword ranking updates scheduled at 3 AM UTC");
+// **Execute the cron function immediately if run manually**
+if (require.main === module) {
+    updateKeywordRankings();
+}

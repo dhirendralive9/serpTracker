@@ -84,6 +84,7 @@
                         <td><%= keyword.rank !== null ? keyword.rank : "Not in Top 100" %></td>
                         <td><%= keyword.lastChecked ? new Date(keyword.lastChecked).toLocaleString() : "N/A" %></td>
                         <td>
+                            <a href="/dashboard/<%= keyword._id %>" class="btn btn-info btn-sm">Stats</a>
                             <form action="/dashboard/delete/<%= keyword._id %>" method="POST" onsubmit="return confirm('Are you sure you want to delete this keyword?');">
                                 <button type="submit" class="btn btn-danger btn-sm">Delete</button>
                             </form>
