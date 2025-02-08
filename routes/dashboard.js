@@ -4,10 +4,14 @@ const authMiddleware = require("../middleware/auth");
 const Keyword = require("../models/Keyword");
 const axios = require("axios");
 const RecentCheck = require("../models/RecentCheck");
+const Top100 = require("../models/Top100");
+
 
 const searchEngineEndpoints = {
     google: "https://api.dataforseo.com/v3/serp/google/organic/live/advanced",
-    bing: "https://api.dataforseo.com/v3/serp/bing/organic/live/advanced"
+    bing: "https://api.dataforseo.com/v3/serp/bing/organic/live/advanced",
+    yahoo: "https://api.dataforseo.com/v3/serp/yahoo/organic/live/advanced",
+    youtube: "https://api.dataforseo.com/v3/serp/youtube/organic/live/advanced"
 };
 
 
@@ -28,9 +32,9 @@ router.get("/", authMiddleware, async (req, res) => {
 const locationCodes = {
     USA: 2840,
     UK: 2826,
-    Australia: 2782,
-    Canada: 2841,
-    India: 2793
+    Australia: 2036,
+    Canada: 2124,
+    India: 2356
 };
 
 
@@ -262,6 +266,221 @@ router.post("/delete/:id", async (req, res) => {
         res.redirect("/dashboard");
     } catch (error) {
         console.error("❌ Error deleting keyword:", error);
+        res.status(500).send("Server Error");
+    }
+});
+
+router.post("/top100", authMiddleware, async (req, res) => {
+    const { keyword, country, device_os, searchEngine } = req.body;
+    const [device, os] = device_os.split("/");
+    const location_code = locationCodes[country];
+    let apiEndpoint = searchEngineEndpoints[searchEngine || "google"];
+
+    if (searchEngine === "youtube") {
+        apiEndpoint = "https://api.dataforseo.com/v3/serp/youtube/organic/live/advanced";
+    }
+
+    try {
+        const requestData = JSON.stringify([
+            searchEngine === "youtube"
+                ? {
+                    keyword,
+                    location_code,
+                    language_code: "en",
+                    os,
+                    block_depth: 20 // Correct for YouTube
+                }
+                : {
+                    keyword,
+                    location_code,
+                    language_code: "en",
+                    device,
+                    os,
+                    depth: 100
+                }
+        ]);
+
+        //console.log("🔍 Sending API request for:", searchEngine, "Payload:", requestData);
+
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", apiEndpoint, true);
+        xhr.setRequestHeader("Authorization", authHeader);
+        xhr.setRequestHeader("Content-Type", "application/json");
+
+        xhr.onreadystatechange = async function () {
+            if (xhr.readyState === 4) {
+                try {
+                    const response = JSON.parse(xhr.responseText);
+                    console.log("🔹 Raw API Response:", response);
+        
+                    // Ensure results is always defined as an empty array initially
+                    let results = [];
+        
+                    if (response.tasks && response.tasks.length > 0 && response.tasks[0].result && response.tasks[0].result[0].items) {
+                        results = response.tasks[0].result[0].items.map((item) => ({
+                            url: item.url || "N/A",
+                            title: item.title || "No Title Available",
+                            description: item.description || "No description available",
+                            thumbnail: searchEngine === "youtube" ? item.thumbnail_url : null
+                        }));
+                    } else {
+                        console.warn("⚠️ No ranking data available for", searchEngine);
+                    }
+        
+                    console.log("✅ Storing results in session:", results);
+
+                    const top100Entry = new Top100({
+                        user: req.user.id,
+                        keyword,
+                        searchEngine,
+                        country,
+                        device,
+                        os,
+                        results
+                    });
+
+                    await top100Entry.save();
+        
+                    req.session.results = results;
+                    req.session.keyword = keyword;
+                    req.session.searchEngine = searchEngine;
+        
+                    res.redirect("/dashboard/top100");
+        
+                } catch (error) {
+                    console.error("❌ Error processing SERP response:", error);
+                    res.status(500).send("Server Error");
+                }
+            }
+        };
+        
+
+        xhr.send(requestData);
+    } catch (error) {
+        console.error("❌ Error sending SERP request:", error);
+        res.status(500).send("Server Error");
+    }
+});
+
+
+router.get("/top100", authMiddleware, (req, res) => {
+    res.render("top100", {
+        results: req.session.results || [],  // Ensure results is always an array
+        keyword: req.session.keyword || "",
+        searchEngine: req.session.searchEngine || "google"
+    });
+
+    // Clear session data after rendering to avoid stale results
+    req.session.results = null;
+    req.session.keyword = null;
+    req.session.searchEngine = null;
+});
+
+router.get("/top100/history", authMiddleware, async (req, res) => {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
+    try {
+        const total = await Top100.countDocuments({ user: req.user.id });
+        const history = await Top100.find({ user: req.user.id })
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit);
+
+        res.render("top100_history", {
+            history,
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit)
+        });
+    } catch (error) {
+        console.error("❌ Error fetching history:", error);
+        res.status(500).send("Server Error");
+    }
+});
+
+// Delete entry
+router.post("/top100/history/delete/:id", authMiddleware, async (req, res) => {
+    try {
+        await Top100.findOneAndDelete({ _id: req.params.id, user: req.user.id });
+        res.redirect("/dashboard/top100/history");
+    } catch (error) {
+        console.error("❌ Error deleting entry:", error);
+        res.status(500).send("Server Error");
+    }
+});
+
+router.post("/top100/history/fetch/:id", authMiddleware, async (req, res) => {
+    try {
+        const entry = await Top100.findById(req.params.id);
+        if (!entry) {
+            return res.status(404).send("Entry not found.");
+        }
+
+        const { keyword, country, device, os, searchEngine } = entry;
+        const location_code = locationCodes[country];
+        let apiEndpoint = searchEngineEndpoints[searchEngine || "google"];
+
+        if (searchEngine === "youtube") {
+            apiEndpoint = "https://api.dataforseo.com/v3/serp/youtube/organic/live/advanced";
+        }
+
+        const requestData = JSON.stringify([
+            searchEngine === "youtube"
+                ? { keyword, location_code, language_code: "en", os, block_depth: 20 }
+                : { keyword, location_code, language_code: "en", device, os, depth: 100 }
+        ]);
+
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", apiEndpoint, true);
+        xhr.setRequestHeader("Authorization", authHeader);
+        xhr.setRequestHeader("Content-Type", "application/json");
+
+        xhr.onreadystatechange = async function () {
+            if (xhr.readyState === 4) {
+                try {
+                    const response = JSON.parse(xhr.responseText);
+                    if (!response.tasks || response.tasks.length === 0 || !response.tasks[0].result || !response.tasks[0].result[0].items) {
+                        return res.redirect("/dashboard/top100/history");
+                    }
+
+                    const results = response.tasks[0].result[0].items.map((item) => ({
+                        url: item.url || "N/A",
+                        title: item.title || "No Title Available",
+                        description: item.description || "No description available",
+                        thumbnail: searchEngine === "youtube" ? item.thumbnail_url : null
+                    }));
+
+                    const newEntry = new Top100({
+                        user: req.user.id,
+                        keyword,
+                        searchEngine,
+                        country,
+                        device,
+                        os,
+                        results
+                    });
+
+                    await newEntry.save();
+
+                    req.session.results = results;
+                    req.session.keyword = keyword;
+                    req.session.searchEngine = searchEngine;
+
+                    res.redirect("/dashboard/top100");
+
+                } catch (error) {
+                    console.error("❌ Error processing SERP response:", error);
+                    res.status(500).send("Server Error");
+                }
+            }
+        };
+
+        xhr.send(requestData);
+    } catch (error) {
+        console.error("❌ Error fetching data:", error);
         res.status(500).send("Server Error");
     }
 });

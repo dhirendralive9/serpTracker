@@ -1,4 +1,5 @@
 const express = require("express");
+const session = require("express-session");
 const path = require("path");
 const connectDB = require("./config/db");
 const authRoutes = require("./routes/authRoutes");
@@ -10,6 +11,14 @@ const jwt = require("jsonwebtoken");
 
 const app = express();
 connectDB();
+
+
+app.use(session({
+    secret: process.env.SESSION_SECRET, // Change this to a secure secret
+    resave: false,
+    saveUninitialized: true,
+    cookie: { maxAge: 60000 } // Session lasts 60 seconds
+}));
 
 // Middleware
 app.use(express.json());

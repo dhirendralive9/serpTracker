@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <style>
+        .bg-black {
+            background-color: #000 !important;
+        }
+        .nav-link-custom {
+            color: white !important;
+            transition: color 0.3s ease-in-out;
+        }
+        .nav-link-custom:hover {
+            color: #00aaff !important; /* Blue hover effect */
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-black">
+        <div class="container">
+            <a class="navbar-brand text-white fw-bold" href="/">SEO Tracker</a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link nav-link-custom" href="/dashboard">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link nav-link-custom" href="/dashboard/check">Check Now</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link nav-link-custom btn btn-primary text-white px-3" href="/dashboard/top100">Top 100</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link nav-link-custom" href="/logout">Logout</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+    
+    
+
+    <div class="container mt-5">
+        <h2>Top 100 Results</h2>
+        <form action="/dashboard/top100" method="POST">
+            <div class="mb-3">
+                <label>Keyword</label>
+                <input type="text" name="keyword" class="form-control" required>
+            </div>
+            <div class="mb-3">
+                <label>Country</label>
+                <select name="country" class="form-control">
+                    <option value="USA">USA</option>
+                    <option value="UK">UK</option>
+                    <option value="Australia">Australia</option>
+                    <option value="Canada">Canada</option>
+                    <option value="India">India</option>
+                </select>
+            </div>
+            <div class="mb-3">
+                <label>Search Engine</label>
+                <select name="searchEngine" class="form-control">
+                    <option value="google">Google</option>
+                    <option value="bing">Bing</option>
+                    <option value="yahoo">Yahoo</option>
+                    <option value="youtube">YouTube</option>
+                </select>
+            </div>
+            <div class="mb-3">
+                <label>Device</label>
+                <select name="device_os" class="form-control">
+                    <option value="desktop/windows">Desktop/Windows</option>
+                    <option value="desktop/macos">Desktop/MacOS</option>
+                    <option value="mobile/android">Mobile/Android</option>
+                    <option value="mobile/ios">Mobile/iOS</option>
+                </select>
+            </div>
+            <button type="submit" class="btn btn-success">Get Top 100</button>
+        </form>
+
+        
+        <a href="/dashboard/top100/history" class="btn btn-secondary">History</a>
+
+    
+        <% if (results) { %>
+            <h3 class="mt-4">Top 100 Results for "<%= keyword %>" on "<%= searchEngine.toUpperCase() %>"</h3>
+
+            
+            <!-- Pagination Controls -->
+            <div class="d-flex justify-content-between mb-2">
+                <select id="resultsPerPage" class="form-select w-auto">
+                    <option value="10">Show 10</option>
+                    <option value="50">Show 50</option>
+                    <option value="100" selected>Show 100</option>
+                </select>
+                <div>
+                    <button id="prevPage" class="btn btn-outline-primary">Previous</button>
+                    <button id="nextPage" class="btn btn-outline-primary">Next</button>
+                </div>
+            </div>
+    
+            <table class="table table-bordered table-striped">
+                <thead>
+                    <tr>
+                        <th>Position</th>
+                        <th>Result</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsTable">
+                    <% results.forEach((result, index) => { %>
+                        <tr>
+                            <td><%= index + 1 %></td>
+                            <td>
+                                <a href="<%= result.url %>" target="_blank">
+                                    <% if (searchEngine === "youtube") { %>
+                                        <img src="<%= result.thumbnail %>" width="120">
+                                    <% } else { %>
+                                        <img src="https://www.google.com/s2/favicons?sz=32&domain=<%= result.url %>" class="ms-2">
+                                    <% } %>
+                                    <%= result.title %>
+                                </a>
+                            </td>
+                            <td><%= result.description || "No description available" %></td>
+                        </tr>
+                    <% }) %>
+                </tbody>
+                
+            </table>
+        <% } %>
+    </div>
+    
+    <script>
+    document.addEventListener("DOMContentLoaded", function() {
+        let resultsPerPage = 100;
+        let currentPage = 1;
+        const tableRows = document.querySelectorAll("#resultsTable tr");
+    
+        function showPage(page) {
+            const start = (page - 1) * resultsPerPage;
+            const end = start + resultsPerPage;
+            tableRows.forEach((row, index) => {
+                row.style.display = index >= start && index < end ? "" : "none";
+            });
+        }
+    
+        document.getElementById("resultsPerPage").addEventListener("change", function() {
+            resultsPerPage = parseInt(this.value);
+            currentPage = 1;
+            showPage(currentPage);
+        });
+    
+        document.getElementById("prevPage").addEventListener("click", function() {
+            if (currentPage > 1) {
+                currentPage--;
+                showPage(currentPage);
+            }
+        });
+    
+        document.getElementById("nextPage").addEventListener("click", function() {
+            if (currentPage * resultsPerPage < tableRows.length) {
+                currentPage++;
+                showPage(currentPage);
+            }
+        });
+    
+        showPage(currentPage);
+    });
+    </script>
+</body>
+</html>
