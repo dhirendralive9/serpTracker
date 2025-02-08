@@ -1,48 +1,5 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Check Current Ranking</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-    <style>
-        .bg-black {
-            background-color: #000 !important;
-        }
-        .nav-link-custom {
-            color: white !important;
-            transition: color 0.3s ease-in-out;
-        }
-        .nav-link-custom:hover {
-            color: #00aaff !important; /* Blue hover effect */
-        }
-    </style>
-</head>
-<body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-black">
-        <div class="container">
-            <a class="navbar-brand text-white fw-bold" href="/">SEO Tracker</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link nav-link-custom" href="/dashboard">Dashboard</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link nav-link-custom" href="/dashboard/check">Check Now</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link nav-link-custom btn btn-primary text-white px-3" href="/dashboard/top100">Top 100</a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link nav-link-custom" href="/logout">Logout</a>
-                    </li>
-                </ul>
-            </div>
-        </div>
-    </nav>
+<%- include('partials/navbar') %>
+
     
 
     <div class="container mt-5">
