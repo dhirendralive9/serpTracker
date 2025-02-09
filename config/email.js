@@ -1,37 +1,44 @@
 const axios = require("axios");
 
-// Function to send a verification email using Brevo API
-async function sendVerificationEmail(name, email, token) {
-    const verificationLink = `${process.env.BASE_URL}/verify/${token}`;
+async function sendVerificationEmail(email, name, token) {
+    // Validate email format before sending
+    if (!email || !email.includes("@")) {
+        console.error("❌ Invalid email format:", email);
+        return;
+    }
+
+    // Get sender email and base URL from .env
+    const senderEmail = process.env.SENDER_EMAIL;
+    const baseUrl = process.env.BASE_URL; // Example: https://seo.dhirendrabiswal.com
+
+    const verificationLink = `${baseUrl}/verify/${token}`;
 
     const emailData = {
-        sender: { name: "SerpTracker", email: process.env.BREVO_SENDER_EMAIL },
-        to: [{ email, name }],
-        subject: "Verify Your Email - SerpTracker",
+        sender: { name: "SERP Tracker", email: senderEmail },
+        to: [{ email }], // Only email, without name
+        subject: "Verify Your Email - SERP Tracker",
         htmlContent: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px; background: #f9f9f9;">
-            <h2 style="color: #333;">Hey ${name},</h2>
-            <p style="font-size: 16px; color: #555;">Thanks for registering on <strong>SerpTracker</strong>! We’re excited to have you on board.</p>
-            <p style="font-size: 16px; color: #555;">Please verify your email by clicking the button below:</p>
-            <a href="${verificationLink}" style="display: inline-block; padding: 12px 20px; background-color: #007bff; color: #fff; text-decoration: none; font-size: 16px; border-radius: 5px;">Verify Email</a>
-            <p style="font-size: 14px; color: #777; margin-top: 20px;">If you didn’t register for SerpTracker, please ignore this email.</p>
-            <p style="font-size: 14px; color: #777;">Thanks, <br> The SerpTracker Team</p>
-        </div>
-        `
+            <div style="font-family: Arial, sans-serif; text-align: center;">
+                <h2>Welcome to SERP Tracker, ${name}!</h2>
+                <p>Please verify your email by clicking the button below:</p>
+                <a href="${verificationLink}" style="display:inline-block; padding:10px 20px; color:white; background-color:#007BFF; text-decoration:none; border-radius:5px;">Verify Email</a>
+                <p>If the button doesn't work, copy and paste this link into your browser:</p>
+                <p>${verificationLink}</p>
+                <p>Thank you for registering!</p>
+            </div>
+        `,
     };
 
     try {
         const response = await axios.post("https://api.brevo.com/v3/smtp/email", emailData, {
-            headers: {
-                "Content-Type": "application/json",
-                "api-key": process.env.BREVO_API_KEY
-            }
+            headers: { "api-key": process.env.BREVO_API_KEY, "Content-Type": "application/json" }
         });
-        console.log(`✅ Verification email sent to ${email}:`, response.data);
+        console.log("✅ Verification email sent successfully:", response.data);
     } catch (error) {
-        console.error(`❌ Failed to send verification email:`, error.response ? error.response.data : error.message);
+        console.error("❌ Failed to send verification email:", error.response ? error.response.data : error.message);
     }
 }
+
 
 
 // Function to send a password reset email

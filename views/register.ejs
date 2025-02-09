@@ -25,17 +25,13 @@
     <div class="container mt-5">
         <h2>Register</h2>
     
-        <!-- Error Alert -->
-        <div id="errorAlert" class="alert alert-danger alert-dismissible fade show" role="alert" style="display: none;">
-            <span id="errorMessage"></span>
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
-    
-        <!-- Warning Alert -->
-        <div id="warningAlert" class="alert alert-warning alert-dismissible fade show" role="alert" style="display: none;">
-            <span id="warningMessage"></span>
-            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-        </div>
+        <!-- Display Error Alert -->
+        <% if (error) { %>
+            <div id="errorAlert" class="alert alert-danger alert-dismissible fade show" role="alert">
+                <%= error %>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        <% } %>
     
         <form action="/register" method="POST">
             <div class="mb-3">
@@ -54,33 +50,46 @@
                 <label for="password" class="form-label">Password</label>
                 <input type="password" class="form-control" id="password" name="password" required>
             </div>
-          
-            <!-- Buttons -->
-        <div class="d-flex gap-2">
+    
+            <!-- Google reCAPTCHA -->
+            <div class="mb-3">
+                <div class="g-recaptcha" data-sitekey="<%= process.env.RECAPTCHA_SITE_KEY %>"></div>
+            </div>
+    
             <button type="submit" class="btn btn-primary">Register</button>
-            <a href="/login" class="btn btn-outline-secondary">Login</a>
-        </div>
         </form>
     </div>
     
-    <!-- Script to Read Alerts from URL -->
+    <!-- Include reCAPTCHA Script -->
+    <script src="https://www.google.com/recaptcha/api.js" async defer></script>
+    
+    <!-- JavaScript to Close Alert and Prevent Resubmission -->
     <script>
         document.addEventListener("DOMContentLoaded", function () {
-            const params = new URLSearchParams(window.location.search);
-            const error = params.get("error");
-            const warning = params.get("warning");
-    
-            if (error) {
-                document.getElementById("errorMessage").innerHTML = decodeURIComponent(error);
-                document.getElementById("errorAlert").style.display = "block";
+            let alertBox = document.getElementById("errorAlert");
+            if (alertBox) {
+                alertBox.querySelector(".btn-close").addEventListener("click", function () {
+                    alertBox.style.display = "none";
+                });
             }
     
-            if (warning) {
-                document.getElementById("warningMessage").innerHTML = decodeURIComponent(warning);
-                document.getElementById("warningAlert").style.display = "block";
+            // Prevent Form Resubmission on Reload
+            if (window.history.replaceState) {
+                window.history.replaceState(null, null, window.location.href);
             }
         });
     </script>
+    <!-- Ensure reCAPTCHA is Completed Before Form Submission -->
+<script>
+    document.getElementById("registerForm").addEventListener("submit", function(event) {
+        var recaptchaResponse = document.getElementById("g-recaptcha-response").value;
+        if (!recaptchaResponse) {
+            event.preventDefault(); // Stop form submission
+            alert("❌ Please complete the reCAPTCHA verification.");
+        }
+    });
+</script>
+    
     
 </div>
 </body>

@@ -2,6 +2,10 @@ const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+const recaptcha = require("../config/recaptcha");
+const axios = require("axios");
+const crypto = require("crypto");
+
 
 const { sendVerificationEmail,sendResetEmail } = require("../config/email");
 
@@ -10,37 +14,69 @@ require("dotenv").config();
 const router = express.Router();
 
 router.post("/register", async (req, res) => {
+    console.log("✅ Register route hit.");
+
+    const { name, username, email, password, "g-recaptcha-response": recaptchaToken } = req.body;
+    console.log("📌 Received Data:", { name, username, email });
+
+    // Ensure reCAPTCHA response exists
+    if (!recaptchaToken) {
+        console.log("❌ No reCAPTCHA response received.");
+        return res.render("register", { user: null, error: "❌ Please complete the reCAPTCHA verification." });
+    }
+
+    // Verify reCAPTCHA with Google
     try {
-        console.log("✅ Incoming Registration Data:", req.body);
+        const recaptchaVerifyUrl = `https://www.google.com/recaptcha/api/siteverify?secret=${process.env.RECAPTCHA_SECRET_KEY}&response=${recaptchaToken}`;
+        const recaptchaRes = await axios.post(recaptchaVerifyUrl);
 
-        const { name, username, email, password } = req.body;
-
-        if (!name || !username || !email || !password) {
-            return res.redirect("/register?error=" + encodeURIComponent("❌ All fields are required."));
+        if (!recaptchaRes.data.success) {
+            console.log("❌ reCAPTCHA verification failed:", recaptchaRes.data);
+            return res.render("register", { user: null, error: "❌ reCAPTCHA verification failed. Please try again." });
         }
+    } catch (error) {
+        console.error("❌ reCAPTCHA Verification Error:", error);
+        return res.render("register", { user: null, error: "❌ Error verifying reCAPTCHA. Please try again later." });
+    }
 
-        const existingUser = await User.findOne({ email });
+    try {
+        // Check if email or username already exists
+        const existingUser = await User.findOne({ $or: [{ email }, { username }] });
         if (existingUser) {
-            return res.redirect("/register?error=" + encodeURIComponent("❌ Email is already registered."));
+            console.log("⚠️ User already exists.");
+            return res.render("register", { user: null, error: "❌ Email or username already in use." });
         }
 
+        // Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
-        const newUser = new User({ name, username, email, password: hashedPassword });
+        console.log("🔑 Password hashed.");
 
-        // Generate verification token
-        newUser.verificationToken = newUser.generateVerificationToken();
+        // Generate a unique email verification token
+        const verificationToken = crypto.randomBytes(32).toString("hex");
+        console.log("📩 Generated verification token:", verificationToken);
 
-        // Save user to DB
+        // Create new user
+        const newUser = new User({
+            name,
+            username,
+            email,
+            password: hashedPassword,
+            isVerified: false,
+            verificationToken
+        });
+
         await newUser.save();
+        console.log("✅ User saved to database.");
 
         // Send verification email
-        await sendVerificationEmail(newUser.name, newUser.email, newUser.verificationToken);
+        await sendVerificationEmail(email, name, verificationToken);
+        console.log("📨 Verification email sent.");
 
-        // Redirect to login page with warning alert
-        return res.redirect("/login?warning=" + encodeURIComponent("✅ Your registration is complete. Please check your email inbox or spam for the verification link to continue."));
+        // Redirect to login with verification alert
+        return res.redirect("/login?warning=" + encodeURIComponent("✅ Registration successful! Please verify your email."));
     } catch (error) {
         console.error("❌ Registration Error:", error);
-        res.redirect("/register?error=" + encodeURIComponent("❌ Something went wrong. Please try again."));
+        return res.render("register", { user: null, error: "❌ Something went wrong. Please try again." });
     }
 });
 
