@@ -117,7 +117,10 @@ router.get("/verify/:token", async (req, res) => {
 });
 
 router.get("/forgot-password", (req, res) => {
-    res.render("forgot-password", { user: null, warning: null });
+    res.render("forgot-password", { 
+        user: null, 
+        warning: req.query.warning || null 
+    });
 });
 
 router.post("/forgot-password", async (req, res) => {
@@ -133,13 +136,14 @@ router.post("/forgot-password", async (req, res) => {
             await sendResetEmail(user.email, user.resetPasswordToken);
         }
 
-        // Always show the same response to maintain ambiguity
+        // Redirect to show a warning message
         res.redirect("/forgot-password?warning=" + encodeURIComponent("✅ Please check your email to recover your account if registered."));
     } catch (error) {
         console.error("❌ Forgot Password Error:", error);
         res.redirect("/forgot-password?warning=" + encodeURIComponent("❌ Something went wrong. Please try again."));
     }
 });
+
 
 // Route to render the password reset page
 router.get("/reset-password/:token", async (req, res) => {
