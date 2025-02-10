@@ -14,15 +14,12 @@ require("dotenv").config();
 const router = express.Router();
 
 router.post("/register", async (req, res) => {
-    console.log("✅ Register route hit.");
-
-    const { name, username, email, password, "g-recaptcha-response": recaptchaToken } = req.body;
-    console.log("📌 Received Data:", { name, username, email });
+    const { name, username, email, password, confirmPassword, "g-recaptcha-response": recaptchaToken } = req.body;
 
     // Ensure reCAPTCHA response exists
     if (!recaptchaToken) {
-        console.log("❌ No reCAPTCHA response received.");
-        return res.render("register", { user: null, error: "❌ Please complete the reCAPTCHA verification." });
+        req.flash("error", "❌ Please complete the reCAPTCHA verification.");
+        return res.redirect("/register");
     }
 
     // Verify reCAPTCHA with Google
@@ -32,30 +29,34 @@ router.post("/register", async (req, res) => {
 
         if (!recaptchaRes.data.success) {
             console.log("❌ reCAPTCHA verification failed:", recaptchaRes.data);
-            return res.render("register", { user: null, error: "❌ reCAPTCHA verification failed. Please try again." });
+            req.flash("error", "❌ reCAPTCHA verification failed. Please try again.");
+            return res.redirect("/register");
         }
     } catch (error) {
         console.error("❌ reCAPTCHA Verification Error:", error);
-        return res.render("register", { user: null, error: "❌ Error verifying reCAPTCHA. Please try again later." });
+        req.flash("error", "❌ Error verifying reCAPTCHA. Please try again later.");
+        return res.redirect("/register");
+    }
+
+    // Check if passwords match
+    if (password !== confirmPassword) {
+        req.flash("error", "❌ Passwords do not match. Please try again.");
+        return res.redirect("/register");
     }
 
     try {
-        // Check if email or username already exists
-        const existingUser = await User.findOne({ $or: [{ email }, { username }] });
+        // Check if user already exists
+        const existingUser = await User.findOne({ email });
         if (existingUser) {
-            console.log("⚠️ User already exists.");
-            return res.render("register", { user: null, error: "❌ Email or username already in use." });
+            req.flash("error", "❌ Email already registered. Try logging in.");
+            return res.redirect("/register");
         }
 
         // Hash password
         const hashedPassword = await bcrypt.hash(password, 10);
-        console.log("🔑 Password hashed.");
-
-        // Generate a unique email verification token
-        const verificationToken = crypto.randomBytes(32).toString("hex");
-        console.log("📩 Generated verification token:", verificationToken);
 
         // Create new user
+        const verificationToken = crypto.randomBytes(32).toString("hex");
         const newUser = new User({
             name,
             username,
@@ -66,17 +67,16 @@ router.post("/register", async (req, res) => {
         });
 
         await newUser.save();
-        console.log("✅ User saved to database.");
 
         // Send verification email
-        await sendVerificationEmail(email, name, verificationToken);
-        console.log("📨 Verification email sent.");
+        await sendVerificationEmail(email,name, verificationToken);
 
-        // Redirect to login with verification alert
-        return res.redirect("/login?warning=" + encodeURIComponent("✅ Registration successful! Please verify your email."));
+        req.flash("success", "✅ Registration successful! Please check your email to verify your account.");
+        res.redirect("/login");
     } catch (error) {
         console.error("❌ Registration Error:", error);
-        return res.render("register", { user: null, error: "❌ Something went wrong. Please try again." });
+        req.flash("error", "❌ Something went wrong. Please try again.");
+        res.redirect("/register");
     }
 });
 
@@ -119,14 +119,15 @@ router.post("/login", async (req, res) => {
         // Check if the account is verified
         if (!user.isVerified) {
             console.log("❌ Email not verified.");
-            return res.render("login", { error: "❌ Please verify your email before logging in." });
+            req.flash("error", "❌ Please verify your email before logging in. ");
+            return res.render("login", { error: "❌ Please verify your email before logging in.",user:null });
         }
 
         // Compare passwords
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
             console.log("❌ Incorrect password.");
-            return res.render("login", { error: "❌ Invalid email or password." });
+            return res.render("login", { error: "❌ Invalid email or password.",user:null });
         }
 
         // Generate JWT token
@@ -139,7 +140,7 @@ router.post("/login", async (req, res) => {
         return res.redirect("/dashboard");
     } catch (error) {
         console.error("❌ Login Error:", error);
-        return res.render("login", { error: "❌ Something went wrong. Please try again." });
+        return res.render("login", { error: "❌ Something went wrong. Please try again." , user:null});
     }
 });
 
@@ -157,7 +158,7 @@ router.get("/register", (req, res) => {
 
 
 router.get("/login", (req, res) => {
-    res.render("login", { error: null, user: null }); // Ensure 'user' is passed
+    res.render("login", { error: null, user: null,messages: req.flash() }); // Ensure 'user' is passed
 });
 
 
