@@ -296,6 +296,72 @@ router.post("/reset-password/:token", async (req, res) => {
     }
 });
 
+// GET Route: Show Resend Activation Page
+router.get("/resend-activation", (req, res) => {
+    res.render("resend-activation", { messages: req.flash() ,user: req.user || null });
+});
+
+// POST Route: Handle Activation Email Resend Request
+router.post("/resend-activation", async (req, res) => {
+    console.log("✅ Resend Activation route hit.");
+
+    const { email, "g-recaptcha-response": recaptchaToken } = req.body;
+
+    // Ensure reCAPTCHA response exists
+    if (!recaptchaToken) {
+        req.flash("error", "❌ Please complete the reCAPTCHA verification.");
+        return res.redirect("/resend-activation");
+    }
+
+    // Verify reCAPTCHA with Google
+    try {
+        const recaptchaVerifyUrl = `https://www.google.com/recaptcha/api/siteverify?secret=${process.env.RECAPTCHA_SECRET_KEY}&response=${recaptchaToken}`;
+        const recaptchaRes = await axios.post(recaptchaVerifyUrl);
+
+        if (!recaptchaRes.data.success) {
+            console.log("❌ reCAPTCHA verification failed:", recaptchaRes.data);
+            req.flash("error", "❌ reCAPTCHA verification failed. Please try again.");
+            return res.redirect("/resend-activation");
+        }
+    } catch (error) {
+        console.error("❌ reCAPTCHA Verification Error:", error);
+        req.flash("error", "❌ Error verifying reCAPTCHA. Please try again later.");
+        return res.redirect("/resend-activation");
+    }
+
+    try {
+        const user = await User.findOne({ email });
+
+        // Show generic success message for security reasons
+        req.flash("success", "✅ Expect an email shortly if you're registered and not activated.");
+        res.redirect("/resend-activation");
+
+        if (!user) {
+            console.log("⚠️ User does not exist, but showing success message to maintain security.");
+            return;
+        }
+
+        // If user is already verified, do not resend email
+        if (user.isVerified) {
+            console.log("⚠️ User is already verified. No email sent.");
+            return;
+        }
+
+        // Generate new verification token
+        const verificationToken = crypto.randomBytes(32).toString("hex");
+        user.verificationToken = verificationToken;
+        await user.save();
+
+        // Send new verification email
+        await sendVerificationEmail(email, verificationToken);
+        console.log("📨 Verification email sent again.");
+    } catch (error) {
+        console.error("❌ Resend Activation Error:", error);
+        req.flash("error", "❌ Something went wrong. Please try again.");
+        res.redirect("/resend-activation");
+    }
+});
+
 
 
 module.exports = router;
