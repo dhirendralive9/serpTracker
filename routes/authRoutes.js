@@ -347,13 +347,13 @@ router.post("/resend-activation", async (req, res) => {
             return;
         }
 
-        // Generate new verification token
+        // Generate new verification token and update the database
         const verificationToken = crypto.randomBytes(32).toString("hex");
         user.verificationToken = verificationToken;
         await user.save();
-
-        // Send new verification email
-        await sendVerificationEmail(email, verificationToken);
+         var name = user.name;
+        // Send new verification email using the existing function
+        await sendVerificationEmail(email,name, verificationToken);
         console.log("📨 Verification email sent again.");
     } catch (error) {
         console.error("❌ Resend Activation Error:", error);
@@ -361,7 +361,6 @@ router.post("/resend-activation", async (req, res) => {
         res.redirect("/resend-activation");
     }
 });
-
 
 
 module.exports = router;
