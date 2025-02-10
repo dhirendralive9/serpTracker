@@ -83,35 +83,63 @@ router.post("/register", async (req, res) => {
 
 // Login User
 router.post("/login", async (req, res) => {
+    console.log("✅ Login route hit.");
+
+    const { email, password, "g-recaptcha-response": recaptchaToken } = req.body;
+    console.log("📌 Received Data:", { email });
+
+    // Ensure reCAPTCHA response exists
+    if (!recaptchaToken) {
+        console.log("❌ No reCAPTCHA response received.");
+        return res.render("login", { error: "❌ Please complete the reCAPTCHA verification." });
+    }
+
+    // Verify reCAPTCHA with Google
     try {
-        const { email, password } = req.body;
+        const recaptchaVerifyUrl = `https://www.google.com/recaptcha/api/siteverify?secret=${process.env.RECAPTCHA_SECRET_KEY}&response=${recaptchaToken}`;
+        const recaptchaRes = await axios.post(recaptchaVerifyUrl);
 
-        if (!email || !password) {
-            return res.redirect("/login?error=" + encodeURIComponent("❌ All fields are required."));
+        if (!recaptchaRes.data.success) {
+            console.log("❌ reCAPTCHA verification failed:", recaptchaRes.data);
+            return res.render("login", { error: "❌ reCAPTCHA verification failed. Please try again." });
         }
+    } catch (error) {
+        console.error("❌ reCAPTCHA Verification Error:", error);
+        return res.render("login", { error: "❌ Error verifying reCAPTCHA. Please try again later." });
+    }
 
+    try {
+        // Check if user exists
         const user = await User.findOne({ email });
         if (!user) {
-            return res.redirect("/login?error=" + encodeURIComponent("❌ Invalid email or password."));
+            console.log("❌ User not found.");
+            return res.render("login", { error: "❌ Invalid email or password." });
         }
 
+        // Check if the account is verified
         if (!user.isVerified) {
-            return res.redirect("/login?error=" + encodeURIComponent("❌ Please verify your email before logging in."));
+            console.log("❌ Email not verified.");
+            return res.render("login", { error: "❌ Please verify your email before logging in." });
         }
 
+        // Compare passwords
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
-            return res.redirect("/login?error=" + encodeURIComponent("❌ Invalid email or password."));
+            console.log("❌ Incorrect password.");
+            return res.render("login", { error: "❌ Invalid email or password." });
         }
 
-        // Generate JWT Token
+        // Generate JWT token
         const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
 
+        // Store token in a cookie
         res.cookie("token", token, { httpOnly: true });
-        res.redirect("/dashboard");
+
+        console.log("✅ Login successful.");
+        return res.redirect("/dashboard");
     } catch (error) {
         console.error("❌ Login Error:", error);
-        res.redirect("/login?error=" + encodeURIComponent("❌ Something went wrong. Please try again."));
+        return res.render("login", { error: "❌ Something went wrong. Please try again." });
     }
 });
 
@@ -153,30 +181,70 @@ router.get("/verify/:token", async (req, res) => {
 });
 
 router.get("/forgot-password", (req, res) => {
-    res.render("forgot-password", { 
-        user: null, 
-        warning: req.query.warning || null 
-    });
+    res.render("forgot-password", { error: null, success: null, user: req.user || null });
 });
 
 router.post("/forgot-password", async (req, res) => {
+    console.log("✅ Forgot Password route hit.");
+
+    const { email, "g-recaptcha-response": recaptchaToken } = req.body;
+    console.log("📌 Received Email:", email);
+
+    // Ensure reCAPTCHA response exists
+    if (!recaptchaToken) {
+        console.log("❌ No reCAPTCHA response received.");
+        req.flash("error", "❌ Please complete the reCAPTCHA verification.");
+        return res.redirect("/forgot-password");
+    }
+
+    // Verify reCAPTCHA with Google
     try {
-        const { email } = req.body;
+        const recaptchaVerifyUrl = `https://www.google.com/recaptcha/api/siteverify?secret=${process.env.RECAPTCHA_SECRET_KEY}&response=${recaptchaToken}`;
+        const recaptchaRes = await axios.post(recaptchaVerifyUrl);
+
+        if (!recaptchaRes.data.success) {
+            console.log("❌ reCAPTCHA verification failed:", recaptchaRes.data);
+            req.flash("error", "❌ reCAPTCHA verification failed. Please try again.");
+            return res.redirect("/forgot-password");
+        }
+    } catch (error) {
+        console.error("❌ reCAPTCHA Verification Error:", error);
+        req.flash("error", "❌ Error verifying reCAPTCHA. Please try again later.");
+        return res.redirect("/forgot-password");
+    }
+
+    try {
+        // Check if user exists
         const user = await User.findOne({ email });
-
-        if (user && user.isVerified) {
-            user.resetPasswordToken = user.generateResetToken();
-            user.resetPasswordExpires = Date.now() + 3600000; // 1 hour expiry
-            await user.save();
-
-            await sendResetEmail(user.email, user.resetPasswordToken);
+        if (!user) {
+            console.log("⚠️ User does not exist, but showing success message to maintain ambiguity.");
+            req.flash("success", "✅ Please check your email for the password reset link if your account exists.");
+            return res.redirect("/forgot-password");
         }
 
-        // Redirect to show a warning message
-        res.redirect("/forgot-password?warning=" + encodeURIComponent("✅ Please check your email to recover your account if registered."));
+        // Ensure account is verified before sending reset email
+        if (!user.isVerified) {
+            console.log("❌ Account is not verified.");
+            req.flash("error", "❌ Please verify your email before resetting your password.");
+            return res.redirect("/forgot-password");
+        }
+
+        // Generate password reset token
+        const resetToken = crypto.randomBytes(32).toString("hex");
+        user.resetPasswordToken = resetToken;
+        user.resetPasswordExpires = Date.now() + 3600000; // Token expires in 1 hour
+        await user.save();
+
+        // Send password reset email
+        await sendResetEmail(email, resetToken);
+        console.log("📨 Password reset email sent.");
+
+        req.flash("success", "✅ Please check your email for the password reset link.");
+        return res.redirect("/forgot-password");
     } catch (error) {
         console.error("❌ Forgot Password Error:", error);
-        res.redirect("/forgot-password?warning=" + encodeURIComponent("❌ Something went wrong. Please try again."));
+        req.flash("error", "❌ Something went wrong. Please try again.");
+        return res.redirect("/forgot-password");
     }
 });
 
