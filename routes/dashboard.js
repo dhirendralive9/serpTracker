@@ -21,7 +21,8 @@ const { XMLHttpRequest } = require("xmlhttprequest");
 router.get("/", authMiddleware, async (req, res) => {
     try {
         const trackedKeywords = await Keyword.find({ user: req.user.id }).sort({ date: -1 });
-        res.render("dashboard", { username: req.user.username, trackedKeywords });
+        console.log(req.user);
+        res.render("dashboard", { username: req.user.username, trackedKeywords,name:req.user.name });
     } catch (error) {
         console.error("Error loading dashboard:", error);
         res.status(500).send("Server Error");
