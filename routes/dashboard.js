@@ -5,7 +5,7 @@ const Keyword = require("../models/Keyword");
 const axios = require("axios");
 const RecentCheck = require("../models/RecentCheck");
 const Top100 = require("../models/Top100");
-
+const User = require("../models/User");
 
 const searchEngineEndpoints = {
     google: "https://api.dataforseo.com/v3/serp/google/organic/live/advanced",
@@ -22,7 +22,8 @@ router.get("/", authMiddleware, async (req, res) => {
     try {
         const trackedKeywords = await Keyword.find({ user: req.user.id }).sort({ date: -1 });
         console.log(req.user);
-        res.render("dashboard", { username: req.user.username, trackedKeywords,name:req.user.name });
+        const user = await User.findById(req.user.id).select("name");
+        res.render("dashboard", { username: req.user.username, trackedKeywords,name:user.name });
     } catch (error) {
         console.error("Error loading dashboard:", error);
         res.status(500).send("Server Error");
